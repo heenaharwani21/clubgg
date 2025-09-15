@@ -6,6 +6,7 @@ import google.generativeai as genai
 import shutil
 import os
 import uuid
+import json
 
 app = FastAPI()
 
@@ -35,23 +36,35 @@ async def extract_poker_data(image: UploadFile = File(...)):
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
 
-        # Open image and send to Gemini
         pil_image = Image.open(file_path)
-        prompt = (
+
+        # First: ask Gemini if this is a poker table
+        check_prompt = "Is this image showing a poker game table with players, chips, or cards? Reply strictly with 'YES' or 'NO'."
+        check_response = model.generate_content([check_prompt, pil_image])
+        is_poker = check_response.text.strip().upper().startswith("Y")
+
+        if not is_poker:
+            os.remove(file_path)
+            return JSONResponse(content={
+                "success": True,
+                "data": "Not a poker screen"
+            })
+
+        # If yes, extract poker details
+        extract_prompt = (
             "From this poker screenshot, extract all visible player names, "
-            "chip stacks, and any readable game information. "
-            "Return the result as structured JSON."
+            "chip stacks, pot size, and any readable game information. "
+            "Return the result as structured JSON with fields: players[], pot, game_info."
         )
 
-        response = model.generate_content([prompt, pil_image])
+        response = model.generate_content([extract_prompt, pil_image])
 
-        # Cleanup uploaded file
+        # Cleanup
         os.remove(file_path)
 
-        # Attempt to parse JSON from the response
+        # Try to parse JSON
         result_text = response.text
         try:
-            import json
             parsed_result = json.loads(result_text)
         except Exception:
             parsed_result = {"raw_response": result_text}
