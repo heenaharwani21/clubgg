@@ -7,3 +7,5 @@ transformers
 sentence-transformers
 scikit-learn
 google-generativeai
+python-multipart
+Pillow
